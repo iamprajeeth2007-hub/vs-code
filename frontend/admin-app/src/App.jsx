@@ -3,54 +3,66 @@ import axios from 'axios';
 import './App.css';
 
 const API = 'http://localhost:3000/api';
+const OWNER_PASSWORD = 'campus2025';
+const COMMISSION_RATE = 0.05;
+const RAZORPAY_RATE = 0.02;
+const NET_PROFIT_RATE = COMMISSION_RATE - RAZORPAY_RATE;
+
+function isToday(dateStr) {
+  const date = new Date(dateStr);
+  const today = new Date();
+  return (
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear()
+  );
+}
 
 export default function AdminApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({
-    totalOrders: 0,
-    totalRevenue: 0,
-    netProfit: 0,
-    totalUsers: 0,
-    completedOrders: 0,
-    commission: 0,
-    razorpayFees: 0,
-    stallStats: {},
-    statusCounts: {
-      pending: 0,
-      preparing: 0,
-      ready: 0,
-      completed: 0
-    }
-  });
-
-  const OWNER_PASSWORD = 'campus2025'; // Change this!
-  const COMMISSION_RATE = 0.05; // 05%
-  const RAZORPAY_FEE_RATE = 0.0236; // 2.36%
+  const [filter, setFilter] = useState('today'); // 'today' | 'alltime'
+  const [allOrders, setAllOrders] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
 
   useEffect(() => {
     const loggedIn = localStorage.getItem('adminLoggedIn');
     if (loggedIn === 'true') {
       setIsLoggedIn(true);
-      loadDashboard();
+      fetchData();
     }
   }, []);
 
   useEffect(() => {
     if (isLoggedIn) {
-      // Auto-refresh every 30 seconds
-      const interval = setInterval(loadDashboard, 30000);
+      const interval = setInterval(fetchData, 30000);
       return () => clearInterval(interval);
     }
   }, [isLoggedIn]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [ordersRes, studentsRes] = await Promise.all([
+        axios.get(`${API}/orders/all`),
+        axios.get(`${API}/students/count`)
+      ]);
+      setAllOrders(ordersRes.data.orders || []);
+      setTotalUsers(studentsRes.data.count || 0);
+    } catch (error) {
+      console.error('Error loading dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = (e) => {
     e.preventDefault();
     if (password === OWNER_PASSWORD) {
       localStorage.setItem('adminLoggedIn', 'true');
       setIsLoggedIn(true);
-      loadDashboard();
+      fetchData();
     } else {
       alert('Incorrect password!');
     }
@@ -62,66 +74,48 @@ export default function AdminApp() {
     setPassword('');
   };
 
-  const loadDashboard = async () => {
-    setLoading(true);
-    try {
-      // Fetch all orders
-      const ordersRes = await axios.get(`${API}/orders/all`);
-      const orders = ordersRes.data.orders || [];
+  // Filter orders based on selected view
+  const orders = filter === 'today'
+    ? allOrders.filter(o => isToday(o.created_at))
+    : allOrders;
 
-      // Fetch all students
-      const studentsRes = await axios.get(`${API}/students/count`);
-      const totalUsers = studentsRes.data.count || 0;
+  // Compute stats from filtered orders
+  const totalOrders = orders.length;
+  const completedOrders = orders.filter(o => o.status === 'completed').length;
+  const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
+  const commission = totalRevenue * COMMISSION_RATE;
+  const razorpayFees = totalRevenue * RAZORPAY_RATE;
+  const netProfit = totalRevenue * NET_PROFIT_RATE;
 
-      // Calculate stats
-      const totalOrders = orders.length;
-      const completedOrders = orders.filter(o => o.status === 'completed').length;
-      const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
-
-      // Calculate commission and fees
-      const commission = totalRevenue * COMMISSION_RATE;
-      const razorpayFees = totalRevenue * RAZORPAY_FEE_RATE;
-      const netProfit = commission - razorpayFees;
-
-      // Calculate stall stats
-      const stallStats = {};
-      orders.forEach(order => {
-        const stall = order.store_name || 'Unknown';
-        if (!stallStats[stall]) {
-          stallStats[stall] = { orders: 0, revenue: 0 };
-        }
-        stallStats[stall].orders++;
-        stallStats[stall].revenue += parseFloat(order.total_amount || 0);
-      });
-
-      // Calculate status counts
-      const statusCounts = {
-        pending: orders.filter(o => o.status === 'pending').length,
-        preparing: orders.filter(o => o.status === 'preparing').length,
-        ready: orders.filter(o => o.status === 'ready').length,
-        completed: completedOrders
-      };
-
-      setStats({
-        totalOrders,
-        totalRevenue,
-        netProfit,
-        totalUsers,
-        completedOrders,
-        commission,
-        razorpayFees,
-        stallStats,
-        statusCounts
-      });
-
-    } catch (error) {
-      console.error('Error loading dashboard:', error);
-    } finally {
-      setLoading(false);
-    }
+  // Status counts
+  const statusCounts = {
+    pending: orders.filter(o => o.status === 'pending').length,
+    preparing: orders.filter(o => o.status === 'preparing').length,
+    ready: orders.filter(o => o.status === 'ready').length,
+    completed: completedOrders,
   };
 
-  // LOGIN SCREEN
+  // Vendor stats
+  const vendorMap = {};
+  orders.forEach(order => {
+    const vendor = order.store_name || 'Unknown';
+    if (!vendorMap[vendor]) vendorMap[vendor] = { orders: 0, revenue: 0 };
+    vendorMap[vendor].orders++;
+    vendorMap[vendor].revenue += parseFloat(order.total_amount || 0);
+  });
+
+  const vendors = Object.entries(vendorMap).map(([name, data]) => ({
+    name,
+    orders: data.orders,
+    revenue: data.revenue,
+    commission: data.revenue * COMMISSION_RATE,
+    razorpay: data.revenue * RAZORPAY_RATE,
+    payout: data.revenue * (1 - COMMISSION_RATE),
+  }));
+
+  // Today's total payout to all vendors
+  const totalPayout = vendors.reduce((sum, v) => sum + v.payout, 0);
+
   if (!isLoggedIn) {
     return (
       <div className="login-container">
@@ -147,7 +141,6 @@ export default function AdminApp() {
     );
   }
 
-  // DASHBOARD
   return (
     <div className="dashboard">
       {/* Header */}
@@ -159,136 +152,168 @@ export default function AdminApp() {
             <p>Owner Dashboard</p>
           </div>
         </div>
-        <button className="logout-btn" onClick={handleLogout}>Logout</button>
+        <div className="header-right">
+          <div className="filter-toggle">
+            <button
+              className={`toggle-btn ${filter === 'today' ? 'active' : ''}`}
+              onClick={() => setFilter('today')}
+            >
+              Today
+            </button>
+            <button
+              className={`toggle-btn ${filter === 'alltime' ? 'active' : ''}`}
+              onClick={() => setFilter('alltime')}
+            >
+              All Time
+            </button>
+          </div>
+          <button className="refresh-btn-header" onClick={fetchData} disabled={loading}>
+            {loading ? '⏳' : '🔄'}
+          </button>
+          <button className="logout-btn" onClick={handleLogout}>Logout</button>
+        </div>
       </div>
 
-      {/* Content */}
       <div className="content">
+
+        {/* Filter label */}
+        <div className="filter-label">
+          {filter === 'today'
+            ? `📅 Showing data for today — ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}`
+            : '📦 Showing all-time data'}
+        </div>
+
         {/* Main Stats */}
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-icon primary">📦</div>
             <div className="stat-label">Total Orders</div>
-            <div className="stat-value">{stats.totalOrders}</div>
-            <div className="stat-change">{stats.completedOrders} completed</div>
+            <div className="stat-value">{totalOrders}</div>
+            <div className="stat-change">{completedOrders} completed</div>
           </div>
 
           <div className="stat-card">
             <div className="stat-icon success">💰</div>
-            <div className="stat-label">Total Revenue</div>
-            <div className="stat-value">₹{Math.round(stats.totalRevenue).toLocaleString()}</div>
-            <div className="stat-change">From {stats.totalOrders} orders</div>
+            <div className="stat-label">Gross Revenue</div>
+            <div className="stat-value">₹{Math.round(totalRevenue).toLocaleString()}</div>
+            <div className="stat-change">Across all vendors</div>
           </div>
 
           <div className="stat-card">
             <div className="stat-icon warning">💎</div>
-            <div className="stat-label">Your Profit</div>
-            <div className="stat-value">₹{Math.round(stats.netProfit).toLocaleString()}</div>
-            <div className="stat-change">{COMMISSION_RATE * 100}% commission</div>
+            <div className="stat-label">Your Net Profit</div>
+            <div className="stat-value">₹{Math.round(netProfit).toLocaleString()}</div>
+            <div className="stat-change">After Razorpay deduction</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon danger">🏪</div>
+            <div className="stat-label">Total Vendor Payout</div>
+            <div className="stat-value">₹{Math.round(totalPayout).toLocaleString()}</div>
+            <div className="stat-change">To pay vendors {filter === 'today' ? 'today' : 'overall'}</div>
           </div>
 
           <div className="stat-card">
             <div className="stat-icon purple">👥</div>
-            <div className="stat-label">Total Users</div>
-            <div className="stat-value">{stats.totalUsers}</div>
-            <div className="stat-change">Registered students</div>
+            <div className="stat-label">Registered Users</div>
+            <div className="stat-value">{totalUsers}</div>
+            <div className="stat-change">Total students</div>
           </div>
         </div>
 
         {/* Revenue Breakdown */}
         <div className="chart-section">
           <div className="section-header">
-            <h2 className="section-title">Revenue Breakdown</h2>
-            <button className="refresh-btn" onClick={loadDashboard} disabled={loading}>
-              🔄 {loading ? 'Loading...' : 'Refresh'}
-            </button>
+            <h2 className="section-title">💸 Revenue Breakdown</h2>
           </div>
           <div className="breakdown-section">
             <div className="breakdown-row">
               <span className="breakdown-label">Gross Revenue</span>
-              <span className="breakdown-value">₹{Math.round(stats.totalRevenue).toLocaleString()}</span>
+              <span className="breakdown-value">₹{Math.round(totalRevenue).toLocaleString()}</span>
             </div>
             <div className="breakdown-row">
-              <span className="breakdown-label">Platform Commission (10%)</span>
-              <span className="breakdown-value">₹{Math.round(stats.commission).toLocaleString()}</span>
+              <span className="breakdown-label">Your Commission (5%)</span>
+              <span className="breakdown-value">₹{Math.round(commission).toLocaleString()}</span>
             </div>
             <div className="breakdown-row">
-              <span className="breakdown-label">Razorpay Fees (2.36%)</span>
-              <span className="breakdown-value">₹{Math.round(stats.razorpayFees).toLocaleString()}</span>
+              <span className="breakdown-label">Razorpay Fees (2% — within 5%)</span>
+              <span className="breakdown-value negative">− ₹{Math.round(razorpayFees).toLocaleString()}</span>
             </div>
             <div className="breakdown-row">
-              <span className="breakdown-label">Net Profit</span>
-              <span className="breakdown-value profit">₹{Math.round(stats.netProfit).toLocaleString()}</span>
+              <span className="breakdown-label">Your True Net Profit (3%)</span>
+              <span className="breakdown-value profit">₹{Math.round(netProfit).toLocaleString()}</span>
+            </div>
+            <div className="breakdown-row total-row">
+              <span className="breakdown-label">Total to Pay Vendors (95%)</span>
+              <span className="breakdown-value payout-total">₹{Math.round(totalPayout).toLocaleString()}</span>
             </div>
           </div>
         </div>
 
-        {/* Stalls Performance */}
+        {/* Vendor Payout Cards */}
         <div className="chart-section">
           <div className="section-header">
-            <h2 className="section-title">Stalls Performance</h2>
+            <h2 className="section-title">🏪 Vendor Payouts {filter === 'today' ? '— Today' : '— All Time'}</h2>
+            <span className="section-subtitle">Pay each vendor their amount after your 5% deduction</span>
           </div>
-          <div className="stalls-grid">
-            {Object.keys(stats.stallStats).length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon">📊</div>
-                <p>No stall data yet</p>
-              </div>
-            ) : (
-              Object.entries(stats.stallStats).map(([stall, data]) => (
-                <div key={stall} className="stall-card">
-                  <div className="stall-header">
-                    <div className="stall-name">{stall}</div>
-                    <div className="stall-status">Active</div>
+
+          {vendors.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🏪</div>
+              <p>{filter === 'today' ? 'No orders today yet' : 'No orders yet'}</p>
+            </div>
+          ) : (
+            <div className="vendor-grid">
+              {vendors.map(v => (
+                <div key={v.name} className="vendor-card">
+                  <div className="vendor-header">
+                    <div className="vendor-name">🍽️ {v.name}</div>
+                    <div className="vendor-orders">{v.orders} orders</div>
                   </div>
-                  <div className="stall-stats">
-                    <div className="stall-stat">
-                      <div className="stall-stat-label">Orders</div>
-                      <div className="stall-stat-value">{data.orders}</div>
+                  <div className="vendor-body">
+                    <div className="vendor-row">
+                      <span>Gross Revenue</span>
+                      <span>₹{Math.round(v.revenue).toLocaleString()}</span>
                     </div>
-                    <div className="stall-stat">
-                      <div className="stall-stat-label">Revenue</div>
-                      <div className="stall-stat-value">₹{Math.round(data.revenue).toLocaleString()}</div>
+                    <div className="vendor-row deduction">
+                      <span>Your 5% Commission</span>
+                      <span>− ₹{Math.round(v.commission).toLocaleString()}</span>
+                    </div>
+                    <div className="vendor-row deduction">
+                      <span>Razorpay (2%)</span>
+                      <span>− ₹{Math.round(v.razorpay).toLocaleString()}</span>
+                    </div>
+                    <div className="vendor-payout-box">
+                      <span>Pay Vendor</span>
+                      <span className="payout-amount">₹{Math.round(v.payout).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Order Status */}
         <div className="chart-section">
           <div className="section-header">
-            <h2 className="section-title">Order Status Breakdown</h2>
+            <h2 className="section-title">📋 Order Status</h2>
           </div>
-          <div className="stalls-grid">
-            <div className="stall-card">
-              <div className="stall-header">
-                <div className="stall-name">⏳ Pending</div>
+          <div className="status-grid">
+            {[
+              { label: '⏳ Pending', value: statusCounts.pending, color: 'warning' },
+              { label: '👨‍🍳 Preparing', value: statusCounts.preparing, color: 'primary' },
+              { label: '✅ Ready', value: statusCounts.ready, color: 'success' },
+              { label: '🎉 Completed', value: statusCounts.completed, color: 'purple' },
+            ].map(s => (
+              <div key={s.label} className={`status-card status-${s.color}`}>
+                <div className="status-label">{s.label}</div>
+                <div className="status-value">{s.value}</div>
               </div>
-              <div className="stall-stat-value">{stats.statusCounts.pending}</div>
-            </div>
-            <div className="stall-card">
-              <div className="stall-header">
-                <div className="stall-name">👨‍🍳 Preparing</div>
-              </div>
-              <div className="stall-stat-value">{stats.statusCounts.preparing}</div>
-            </div>
-            <div className="stall-card">
-              <div className="stall-header">
-                <div className="stall-name">✅ Ready</div>
-              </div>
-              <div className="stall-stat-value">{stats.statusCounts.ready}</div>
-            </div>
-            <div className="stall-card">
-              <div className="stall-header">
-                <div className="stall-name">🎉 Completed</div>
-              </div>
-              <div className="stall-stat-value">{stats.statusCounts.completed}</div>
-            </div>
+            ))}
           </div>
         </div>
+
       </div>
     </div>
   );

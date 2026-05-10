@@ -2,9 +2,22 @@ const pg = require('pg');
 const Pool = pg.Pool;
 require('dotenv').config();
 
+// Check if DATABASE_URL exists
+if (!process.env.DATABASE_URL) {
+  console.error('❌ ERROR: DATABASE_URL is not set in .env file!');
+  console.error('💡 Create a .env file in the backend folder with your database URL');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+pool.on('error', (err, client) => {
+  console.error('❌ Unexpected database error:', err);
 });
 
 pool.connect((err, client, release) => {

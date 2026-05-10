@@ -4,10 +4,10 @@ const pool = require('../config/database');
 exports.getAllVendors = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT vendor_id, store_name, rating, prep_time, location, is_active 
+      `SELECT vendor_id, name, rating, prep_time, location, is_active 
        FROM vendors 
        WHERE is_active = true 
-       ORDER BY store_name`
+       ORDER BY name`
     );
     res.json({
       success: true,
@@ -63,7 +63,7 @@ exports.getVendorMenu = async (req, res) => {
       success: true,
       vendor: {
         id: vendorResult.rows[0].vendor_id,
-        name: vendorResult.rows[0].store_name
+        name: vendorResult.rows[0].name
       },
       count: menuResult.rows.length,
       menu: menuResult.rows

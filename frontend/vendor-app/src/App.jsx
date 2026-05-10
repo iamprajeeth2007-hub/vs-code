@@ -5,9 +5,9 @@ const API = "http://localhost:3000/api";
 
 // Valid vendor IDs that match your backend
 const VALID_VENDORS = {
-  grub_foods: { id: "grub_foods", name: "GRUB FOODS", password: "grub123" },
-  roll_me: { id: "roll_me", name: "ROLL ME", password: "roll123" },
-  siddi_vinayaka: { id: "siddi_vinayaka", name: "SIDDI VINAYAKA GARDEN", password: "siddi123" },
+  grub_foods: { id: "grub_foods", name: "GRUB FOODS" },
+  roll_me: { id: "roll_me", name: "ROLL ME" },
+  siddi_vinayaka: { id: "siddi_vinayaka", name: "SIDDI VINAYAKA GARDEN" },
 };
 
 // ── NOTIFICATION ──────────────────────────────────────────────────────────────
@@ -26,7 +26,6 @@ function Notification({ notif }) {
 
 // ── LOGIN PAGE ────────────────────────────────────────────────────────────────
 function LoginPage({ onLogin }) {
-  const [mode, setMode] = useState("login");
   const [vendorId, setVendorId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,44 +67,26 @@ function LoginPage({ onLogin }) {
           <p>Campus Eats Order Management</p>
         </div>
 
-        <div className="auth-tabs">
-          <button className={`atab ${mode === "login" ? "active" : ""}`} onClick={() => { setMode("login"); setError(""); }}>Sign In</button>
-          <button className={`atab ${mode === "info" ? "active" : ""}`} onClick={() => { setMode("info"); setError(""); }}>Credentials</button>
-        </div>
-
-        {mode === "login" ? (
-          <form onSubmit={handleLogin} className="vform">
-            {error && <div className="verr">{error}</div>}
-            <div className="vfg">
-              <label>Select Your Store</label>
-              <select value={vendorId} onChange={e => { setVendorId(e.target.value); setError(""); }} required>
-                <option value="">-- Select your store --</option>
-                {Object.values(VALID_VENDORS).map(v => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="vfg">
-              <label>Password</label>
-              <input type="password" placeholder="Enter store password" value={password}
-                onChange={e => { setPassword(e.target.value); setError(""); }} required />
-            </div>
-            <button type="submit" className="vlogin-btn" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In →"}
-            </button>
-          </form>
-        ) : (
-          <div className="creds-box">
-            <p className="creds-title">Store Credentials</p>
-            {Object.values(VALID_VENDORS).map(v => (
-              <div key={v.id} className="cred-row">
-                <span className="cred-store">{v.name}</span>
-                <span className="cred-pw">{v.password}</span>
-              </div>
-            ))}
-            <p className="creds-note">Contact admin to change passwords.</p>
+        <form onSubmit={handleLogin} className="vform">
+          {error && <div className="verr">{error}</div>}
+          <div className="vfg">
+            <label>Select Your Store</label>
+            <select value={vendorId} onChange={e => { setVendorId(e.target.value); setError(""); }} required>
+              <option value="">-- Select your store --</option>
+              {Object.values(VALID_VENDORS).map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
           </div>
-        )}
+          <div className="vfg">
+            <label>Password</label>
+            <input type="password" placeholder="Enter store password" value={password}
+              onChange={e => { setPassword(e.target.value); setError(""); }} required />
+          </div>
+          <button type="submit" className="vlogin-btn" disabled={loading}>
+            {loading ? "Signing in..." : "Sign In →"}
+          </button>
+        </form>
       </div>
     </div>
   );

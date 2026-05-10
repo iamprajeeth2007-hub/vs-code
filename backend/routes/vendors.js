@@ -2,125 +2,174 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 
-// ==========================================
 // GET ALL VENDORS
-// ==========================================
 router.get('/', async (req, res) => {
-  console.log('🔍 GET /api/vendors called');
-  
   try {
     const result = await pool.query(`
-      SELECT 
-        vendor_id,
-        store_name,
-        location,
-        rating,
-        prep_time,
-        is_active,
-        email,
-        phone
+      SELECT vendor_id, name, location, rating, prep_time, is_active
       FROM vendors
       WHERE is_active = true
       ORDER BY rating DESC
     `);
 
     console.log(`✅ Found ${result.rows.length} vendors`);
-    
-    // Make sure we return the correct format
-    const response = { vendors: result.rows };
-    console.log('📤 Sending response:', JSON.stringify(response, null, 2));
-    
-    res.json(response);
+    res.json(result.rows);
   } catch (error) {
     console.error('❌ Get vendors error:', error);
-    console.error('Error details:', error.message);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Failed to get vendors',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to get vendors' });
   }
 });
 
-// ==========================================
-// GET VENDOR BY ID
-// ==========================================
-router.get('/:vendorId', async (req, res) => {
-  console.log('🔍 GET /api/vendors/:vendorId called');
-  
+// SEARCH VENDORS AND DISHES
+router.get('/search', async (req, res) => {
   try {
-    const { vendorId } = req.params;
+    const { q, filter } = req.query;
     
-    console.log('Looking for vendor:', vendorId);
-    
-    const result = await pool.query(
-      'SELECT * FROM vendors WHERE vendor_id = $1',
-      [vendorId]
-    );
-
-    if (result.rows.length === 0) {
-      console.log('❌ Vendor not found:', vendorId);
-      return res.status(404).json({ error: 'Vendor not found' });
+    if (!q || q.trim().length === 0) {
+      return res.status(400).json({ error: 'Search query required' });
     }
-
-    console.log(`✅ Found vendor: ${result.rows[0].store_name}`);
-    res.json(result.rows[0]);
+    
+    const searchTerm = `%${q.toLowerCase()}%`;
+    
+    let filterClause = '';
+    if (filter === 'veg') {
+      filterClause = "AND m.veg_non_veg = 'VEG'";
+    } else if (filter === 'nonveg') {
+      filterClause = "AND m.veg_non_veg = 'NON-VEG'";
+    }
+    
+    const result = await pool.query(`
+      SELECT DISTINCT
+        v.vendor_id,
+        v.name as vendor_name,
+        v.location,
+        v.rating,
+        v.prep_time,
+        COUNT(DISTINCT m.item_id) as matching_dishes
+      FROM vendors v
+      LEFT JOIN menu_items m ON v.vendor_id = m.vendor_id
+      WHERE v.is_active = true
+      AND m.is_available = true
+      AND (
+        LOWER(v.name) LIKE $1
+        OR LOWER(m.name) LIKE $1
+      )
+      ${filterClause}
+      GROUP BY v.vendor_id, v.name, v.location, v.rating, v.prep_time
+      ORDER BY matching_dishes DESC, v.rating DESC
+    `, [searchTerm]);
+    
+    console.log(`🔍 Search "${q}" found ${result.rows.length} vendors`);
+    res.json(result.rows);
   } catch (error) {
-    console.error('❌ Get vendor error:', error);
-    res.status(500).json({ 
-      error: 'Failed to get vendor',
-      details: error.message 
-    });
+    console.error('❌ Search error:', error);
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 
-// ==========================================
-// GET VENDOR MENU (GROUPED BY CATEGORY)
-// ==========================================
-router.get('/:vendorId/menu', async (req, res) => {
-  console.log('🔍 GET /api/vendors/:vendorId/menu called');
-  
+// FILTER MENU ITEMS ACROSS ALL VENDORS
+router.get('/menu/filter', async (req, res) => {
   try {
-    const { vendorId } = req.params;
+    const { food_type, minPrice, maxPrice, popular } = req.query;
     
-    console.log(`📋 Fetching menu for vendor: ${vendorId}`);
+    console.log(`🔎 Filter menu: food_type=${food_type}, minPrice=${minPrice}, maxPrice=${maxPrice}, popular=${popular}`);
 
-    // First check if vendor exists
-    const vendorCheck = await pool.query(
-      'SELECT store_name FROM vendors WHERE vendor_id = $1',
-      [vendorId]
-    );
+    let conditions = ['m.is_available = true'];
+    let params = [];
+    let paramIdx = 1;
 
-    if (vendorCheck.rows.length === 0) {
-      console.log(`❌ Vendor not found: ${vendorId}`);
-      return res.status(404).json({ error: 'Vendor not found' });
+    if (food_type && food_type !== 'ALL STALLS') {
+      conditions.push(`m.food_type = $${paramIdx++}`);
+      params.push(food_type);
     }
 
-    console.log(`✅ Vendor found: ${vendorCheck.rows[0].store_name}`);
+    if (minPrice) {
+      conditions.push(`m.price >= $${paramIdx++}`);
+      params.push(parseFloat(minPrice));
+    }
 
-    // Get all menu items for this vendor - USING menu_items TABLE
+    if (maxPrice) {
+      conditions.push(`m.price <= $${paramIdx++}`);
+      params.push(parseFloat(maxPrice));
+    }
+
+    if (popular === 'true') {
+      conditions.push(`m.is_popular = true`);
+    }
+
     const result = await pool.query(`
       SELECT 
-        id,
-        item_id,
-        name,
-        category,
-        price,
-        veg_non_veg,
-        is_available
-      FROM menu_items
-      WHERE vendor_id = $1 AND is_available = true
-      ORDER BY category, name
+        m.item_id,
+        m.name,
+        m.category,
+        m.price,
+        m.veg_non_veg,
+        m.is_available,
+        m.is_popular,
+        m.food_type,
+        m.price_range,
+        m.vendor_id,
+        v.name as vendor_name,
+        COALESCE(ROUND(AVG(r.rating)::numeric, 1), 0) as avg_rating,
+        COALESCE(COUNT(r.id), 0) as total_ratings
+      FROM menu_items m
+      JOIN vendors v ON m.vendor_id = v.vendor_id
+      LEFT JOIN dish_ratings r ON m.item_id = r.item_id
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY m.item_id, m.name, m.category, m.price, m.veg_non_veg, m.is_available, m.is_popular, m.food_type, m.price_range, m.vendor_id, v.name
+      ORDER BY m.is_popular DESC, m.name
+    `, params);
+
+    console.log(`✅ Filter found ${result.rows.length} items`);
+    res.json(result.rows.map(item => ({
+      ...item,
+      price: parseFloat(item.price),
+      avg_rating: parseFloat(item.avg_rating) || 0,
+      total_ratings: parseInt(item.total_ratings) || 0
+    })));
+  } catch (error) {
+    console.error('❌ Filter menu error:', error);
+    res.status(500).json({ error: 'Failed to filter menu' });
+  }
+});
+
+// GET VENDOR MENU
+router.get('/:vendorId/menu', async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+    const { filter } = req.query;
+    
+    console.log(`📋 Fetching menu for vendor: ${vendorId}, filter: ${filter || 'all'}`);
+
+    let filterClause = '';
+    if (filter === 'veg') {
+      filterClause = "AND veg_non_veg = 'VEG'";
+    } else if (filter === 'nonveg') {
+      filterClause = "AND veg_non_veg = 'NON-VEG'";
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        m.item_id,
+        m.name,
+        m.category,
+        m.price,
+        m.veg_non_veg,
+        m.is_available,
+        COALESCE(ROUND(AVG(r.rating)::numeric, 1), 0) as avg_rating,
+        COALESCE(COUNT(r.id), 0) as total_ratings
+      FROM menu_items m
+      LEFT JOIN dish_ratings r ON m.item_id = r.item_id
+      WHERE m.vendor_id = $1 
+      AND m.is_available = true
+      ${filterClause}
+      GROUP BY m.item_id, m.name, m.category, m.price, m.veg_non_veg, m.is_available
+      ORDER BY m.category, m.name
     `, [vendorId]);
 
     console.log(`✅ Found ${result.rows.length} menu items`);
 
-    if (result.rows.length === 0) {
-      console.log('⚠️ No menu items found for this vendor');
-      return res.json({});
-    }
-
-    // Group items by category
+    // Group by category
     const menuByCategory = {};
     
     result.rows.forEach(item => {
@@ -131,31 +180,20 @@ router.get('/:vendorId/menu', async (req, res) => {
       }
       
       menuByCategory[category].push({
-        id: item.id,
         item_id: item.item_id,
         name: item.name,
-        description: '', // menu_items doesn't have description
         price: parseFloat(item.price),
-        category: item.category,
         veg_non_veg: item.veg_non_veg,
-        is_available: item.is_available
+        is_available: item.is_available,
+        avg_rating: parseFloat(item.avg_rating) || 0,
+        total_ratings: parseInt(item.total_ratings) || 0
       });
     });
-
-    // Log categories found
-    const categories = Object.keys(menuByCategory);
-    console.log(`📂 Categories found: ${categories.join(', ')}`);
-    console.log(`📊 Items per category:`, Object.entries(menuByCategory).map(([cat, items]) => `${cat}: ${items.length}`).join(', '));
 
     res.json(menuByCategory);
   } catch (error) {
     console.error('❌ Get menu error:', error);
-    console.error('Error details:', error.message);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Failed to get menu',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to get menu' });
   }
 });
 

@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Add response logging
+// Log responses
 api.interceptors.response.use(
   (response) => {
     console.log('✅ API Response:', response.config.url, response.data);
@@ -36,20 +36,40 @@ export const authAPI = {
 };
 
 export const vendorsAPI = {
-  getAll: () => api.get('/vendors')
+  getAll: () => api.get('/vendors'),
+  search: (query, filter = 'all') => api.get(`/vendors/search?q=${query}&filter=${filter}`)
 };
 
 export const menuAPI = {
-  // CORRECTED: Use vendors/:vendorId/menu endpoint
-  getByVendor: (vendorId) => {
-    console.log(`📋 Fetching menu for: ${vendorId}`);
-    return api.get(`/vendors/${vendorId}/menu`);
+  getByVendor: (vendorId, filter = 'all') => {
+    console.log(`📋 Fetching menu for: ${vendorId}, filter: ${filter}`);
+    return api.get(`/vendors/${vendorId}/menu?filter=${filter}`);
+  },
+  getFiltered: (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.food_type) query.set('food_type', params.food_type);
+    if (params.minPrice != null) query.set('minPrice', params.minPrice);
+    if (params.maxPrice != null) query.set('maxPrice', params.maxPrice);
+    if (params.popular) query.set('popular', 'true');
+    console.log(`🔎 Filtering menu: ${query.toString()}`);
+    return api.get(`/vendors/menu/filter?${query.toString()}`);
   }
 };
 
 export const ordersAPI = {
-  create: (data) => api.post('/orders', data),
-  getHistory: () => api.get('/orders/history')
+  create: (data) => {
+    console.log('📤 Creating order:', data);
+    return api.post('/orders', data);
+  },
+  getHistory: (srn) => api.get(`/orders/history?srn=${srn}`)
+};
+
+export const dishesAPI = {
+  getRatings: (itemId) => api.get(`/dishes/${itemId}/ratings`),
+  submitRating: (itemId, rating) => api.post(`/dishes/${itemId}/rate`, { rating }),
+  getReviews: (itemId) => api.get(`/dishes/${itemId}/reviews`),
+  submitReview: (itemId, rating, comment) => api.post(`/dishes/${itemId}/review`, { rating, comment }),
+  canReview: (itemId) => api.get(`/dishes/${itemId}/can-review`)
 };
 
 export default api;

@@ -1,680 +1,655 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import "./App.css";
+import { useState, useEffect } from 'react';
+import { 
+  MapPin, 
+  Search, 
+  Settings, 
+  ShoppingCart, 
+  History, 
+  ChevronRight, 
+  Star, 
+  Plus, 
+  X, 
+  LayoutGrid,
+  Heart,
+  Menu,
+  LogOut,
+  Bell,
+  Package,
+  User
+} from 'lucide-react';
+import './App.css';
+import { authAPI, vendorsAPI, menuAPI, ordersAPI } from './api';
 
-const API = "http://localhost:3000/api";
+function App() {
+  // State Management
+  const [currentScreen, setCurrentScreen] = useState('welcome');
+  const [currentUser, setCurrentUser] = useState(null);
+  
+  // Data State
+  const [restaurants, setRestaurants] = useState([]);
+  const [currentRestaurant, setCurrentRestaurant] = useState(null);
+  const [menuItems, setMenuItems] = useState([]);
+  const [cart, setCart] = useState([]);
+  const [orderHistory, setOrderHistory] = useState([]);
+  const [currentOrder, setCurrentOrder] = useState(null);
+  
+  // UI State
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState('ALL STALLS');
+  const [selectedPriceFilter, setSelectedPriceFilter] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [notification, setNotification] = useState('');
+  const [filteredItems, setFilteredItems] = useState([]);
 
-const Icon = {
-  cart: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>),
-  history: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 0 .5-4.5"/><polyline points="3 3 3 7 7 7"/></svg>),
-  back: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>),
-  search: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>),
-  filter: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>),
-  location: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>),
-  clock: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>),
-  star: (<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>),
-  check: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>),
-  plus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>),
-  minus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>),
-  veg: (<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4" fill="#16a34a"/></svg>),
-  nonveg: (<svg viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4" fill="#dc2626"/></svg>),
-  receipt: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>),
-  logout: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>),
-  lock: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>),
-  menu: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>),
-  user: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>),
-  track: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>),
-  close: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>),
-};
+  const CATEGORIES = [
+    { name: 'ALL STALLS', icon: '🍽️' },
+    { name: 'BIRYANI', icon: '🍛' },
+    { name: 'ROLLS', icon: '🌯' },
+    { name: 'NOODLES', icon: '🍜' },
+    { name: 'DOSA', icon: '🥞' },
+    { name: 'BREAKFAST', icon: '☀️' },
+    { name: 'CHICKEN', icon: '🍗' },
+    { name: 'COMBOS', icon: '🍱' },
+    { name: 'SIDES', icon: '🍟' },
+    { name: 'SHAWARMA', icon: '🌮' },
+    { name: 'BEVERAGES', icon: '☕' },
+    { name: 'LUNCH', icon: '🍲' },
+    { name: 'DESSERT', icon: '🍨' },
+  ];
 
-const VENDOR_COLORS = ["#FF6B35","#E85D04","#F48C06","#DC2F02","#9D0208"];
-const VendorPlaceholder = ({ name, color }) => (
-  <div className="vph" style={{ background: `linear-gradient(135deg, ${color}dd, ${color}66)` }}>
-    <span>{name?.charAt(0) || "?"}</span>
-  </div>
-);
+  const PRICE_FILTERS = [
+    { label: 'All', filter: null },
+    { label: '₹49 & under', max: 49 },
+    { label: '₹49 – ₹99', min: 50, max: 99 },
+    { label: '₹99 – ₹149', min: 100, max: 149 },
+    { label: '₹149 – ₹199', min: 150, max: 199 },
+    { label: '₹199 – ₹299', min: 200, max: 299 },
+    { label: 'Above ₹299', min: 300 },
+    { label: 'Most Popular', popular: true },
+  ];
 
-// ── SIDE MENU ─────────────────────────────────────────────────────────────────
-function SideMenu({ open, onClose, student, onNavigate, onLogout }) {
-  return (
-    <>
-      {open && <div className="menu-overlay" onClick={onClose} />}
-      <div className={`side-menu ${open ? "open" : ""}`}>
-        <div className="sm-header">
-          <div className="sm-avatar">{student?.name?.charAt(0) || student?.srn?.charAt(0) || "S"}</div>
-          <div className="sm-info">
-            <p className="sm-name">{student?.name || "Student"}</p>
-            <p className="sm-srn">{student?.srn}</p>
-          </div>
-          <button className="sm-close" onClick={onClose}>{Icon.close}</button>
-        </div>
+  // Are we actively filtering (not default view)?
+  const isFiltering = selectedFilter !== 'ALL STALLS' || selectedPriceFilter !== null;
 
-        <div className="sm-items">
-          <button className="sm-item" onClick={() => { onNavigate("profile"); onClose(); }}>
-            <span className="sm-ico">{Icon.user}</span>
-            <span>Profile</span>
-          </button>
-          <button className="sm-item" onClick={() => { onNavigate("orderstatus"); onClose(); }}>
-            <span className="sm-ico">{Icon.track}</span>
-            <span>Order Status</span>
-          </button>
-          <button className="sm-item" onClick={() => { onNavigate("history"); onClose(); }}>
-            <span className="sm-ico">{Icon.history}</span>
-            <span>Order History</span>
-          </button>
-          <div className="sm-divider" />
-          <button className="sm-item danger" onClick={() => { onLogout(); onClose(); }}>
-            <span className="sm-ico">{Icon.logout}</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
+  // Auto-login on mount
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    if (token && user) {
+      setCurrentUser(JSON.parse(user));
+      setCurrentScreen('home');
+      loadRestaurants();
+    }
+  }, []);
 
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
-function LoginPage({ onLogin }) {
-  const [mode, setMode] = useState("login");
-  return (
-    <div className="login-pg">
-      <div className="lb lb1" /><div className="lb lb2" />
-      <div className="login-card">
-        <div className="login-top">
-          <div className="logo-icon">🍽️</div>
-          <h1>Campus Eats</h1>
-          <p>Order your favourite campus food</p>
-        </div>
-        <div className="auth-tabs">
-          <button className={`auth-tab ${mode === "login" ? "active" : ""}`} onClick={() => setMode("login")}>Login</button>
-          <button className={`auth-tab ${mode === "register" ? "active" : ""}`} onClick={() => setMode("register")}>Register</button>
-        </div>
-        {mode === "login"
-          ? <LoginForm onLogin={onLogin} />
-          : <RegisterForm onSuccess={() => setMode("login")} />
+  // Fetch filtered items when chips change
+  useEffect(() => {
+    if (currentScreen !== 'home') return;
+    if (!isFiltering) { setFilteredItems([]); return; }
+    const fetchFiltered = async () => {
+      setLoading(true);
+      try {
+        const params = {};
+        if (selectedFilter !== 'ALL STALLS') params.food_type = selectedFilter;
+        if (selectedPriceFilter) {
+          if (selectedPriceFilter.popular) params.popular = true;
+          if (selectedPriceFilter.min != null) params.minPrice = selectedPriceFilter.min;
+          if (selectedPriceFilter.max != null) params.maxPrice = selectedPriceFilter.max;
         }
-      </div>
-    </div>
-  );
-}
-
-function LoginForm({ onLogin }) {
-  const [srn, setSrn] = useState("");
-  const [pin, setPin] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [step, setStep] = useState("srn");
-
-  const handleSrnNext = (e) => {
-    e.preventDefault();
-    if (!srn.trim()) { setError("Please enter your SRN"); return; }
-    setError(""); setStep("pin");
-  };
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (pin.length !== 4) { setError("PIN must be exactly 4 digits"); return; }
-    setLoading(true); setError("");
-    try {
-      const res = await fetch(`${API}/auth/login`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ srn: srn.trim().toUpperCase(), pin }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Login failed");
-      localStorage.setItem("studentSrn", data.student?.srn || srn.trim().toUpperCase());
-      localStorage.setItem("studentName", data.student?.name || "");
-      localStorage.setItem("studentToken", data.token || "");
-      onLogin(data.student);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  return step === "srn" ? (
-    <form onSubmit={handleSrnNext} className="lform">
-      <label className="lbl">Student Registration Number</label>
-      <div className="igrp"><span className="ig-ico">🎓</span>
-        <input type="text" placeholder="e.g. PES1UG22CS001" value={srn}
-          onChange={e => { setSrn(e.target.value); setError(""); }} autoFocus />
-      </div>
-      {error && <p className="errmsg">{error}</p>}
-      <button type="submit" className="btn-org">Continue →</button>
-    </form>
-  ) : (
-    <form onSubmit={handleLogin} className="lform">
-      <button type="button" className="chg-srn" onClick={() => { setStep("srn"); setPin(""); setError(""); }}>← Change SRN</button>
-      <p className="srn-show">{srn.toUpperCase()}</p>
-      <label className="lbl">Enter 4-Digit PIN</label>
-      <div className="igrp"><span className="ig-ico ig-svg">{Icon.lock}</span>
-        <input type="password" inputMode="numeric" maxLength={4} placeholder="Enter your 4-digit PIN"
-          value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g,"").slice(0,4)); setError(""); }}
-          autoFocus className="pin-field" />
-      </div>
-      {error && <p className="errmsg">{error}</p>}
-      <button type="submit" className="btn-org" disabled={loading || pin.length < 4}>
-        {loading ? "Logging in..." : "Login →"}
-      </button>
-    </form>
-  );
-}
-
-function RegisterForm({ onSuccess }) {
-  const [srn, setSrn] = useState("");
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!srn.trim()) { setError("SRN is required"); return; }
-    if (pin.length !== 4) { setError("PIN must be exactly 4 digits"); return; }
-    if (pin !== confirmPin) { setError("PINs do not match"); return; }
-    setLoading(true); setError("");
-    try {
-      const res = await fetch(`${API}/auth/register`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ srn: srn.trim().toUpperCase(), pin }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Registration failed");
-      setSuccess(true);
-      setTimeout(() => onSuccess(), 1800);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  if (success) return (
-    <div className="reg-success"><div className="reg-succ-icon">✅</div>
-      <p className="reg-succ-txt">Registered successfully!</p>
-      <p className="reg-succ-sub">Redirecting to login...</p>
-    </div>
-  );
-
-  return (
-    <form onSubmit={handleRegister} className="lform">
-      <label className="lbl">Student Registration Number</label>
-      <div className="igrp"><span className="ig-ico">🎓</span>
-        <input type="text" placeholder="e.g. PES1UG22CS001" value={srn}
-          onChange={e => { setSrn(e.target.value); setError(""); }} autoFocus />
-      </div>
-      <label className="lbl">Create 4-Digit PIN</label>
-      <div className="igrp"><span className="ig-ico ig-svg">{Icon.lock}</span>
-        <input type="password" inputMode="numeric" maxLength={4} placeholder="Choose a 4-digit PIN"
-          value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g,"").slice(0,4)); setError(""); }} className="pin-field" />
-      </div>
-      <label className="lbl">Confirm PIN</label>
-      <div className="igrp"><span className="ig-ico ig-svg">{Icon.lock}</span>
-        <input type="password" inputMode="numeric" maxLength={4} placeholder="Re-enter your PIN"
-          value={confirmPin} onChange={e => { setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,4)); setError(""); }} className="pin-field" />
-      </div>
-      <p className="reg-note">You can add your name, phone & email from your profile after logging in.</p>
-      {error && <p className="errmsg">{error}</p>}
-      <button type="submit" className="btn-org" disabled={loading || pin.length < 4 || confirmPin.length < 4}>
-        {loading ? "Registering..." : "Create Account →"}
-      </button>
-    </form>
-  );
-}
-
-// ── PROFILE PAGE ──────────────────────────────────────────────────────────────
-function ProfilePage({ student, onBack }) {
-  return (
-    <div className="page">
-      <header className="app-hdr">
-        <div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">Profile</span></div>
-      </header>
-      <div className="profile-body">
-        <div className="profile-avatar">{student?.name?.charAt(0) || student?.srn?.charAt(0) || "S"}</div>
-        <h2 className="profile-name">{student?.name || "Student"}</h2>
-        <p className="profile-srn">{student?.srn}</p>
-        <div className="profile-card">
-          <div className="prow"><span className="plbl">SRN</span><span className="pval">{student?.srn}</span></div>
-          <div className="prow"><span className="plbl">Name</span><span className="pval">{student?.name || "Not set"}</span></div>
-          <div className="prow"><span className="plbl">Email</span><span className="pval">{student?.email || "Not set"}</span></div>
-        </div>
-        <p className="profile-note">To update your profile details, contact your campus admin.</p>
-      </div>
-    </div>
-  );
-}
-
-// ── ORDER STATUS PAGE ─────────────────────────────────────────────────────────
-const STATUS_STEPS = ["pending", "preparing", "ready", "completed"];
-const STATUS_META = {
-  pending:   { icon: "⏳", label: "Order Received",    desc: "Waiting for vendor to accept your order", color: "#f59e0b" },
-  preparing: { icon: "👨‍🍳", label: "Being Prepared",   desc: "Your food is being cooked right now",      color: "#3b82f6" },
-  ready:     { icon: "✅", label: "Ready for Pickup!", desc: "Your order is ready — show pickup code",   color: "#16a34a" },
-  completed: { icon: "🎉", label: "Completed",          desc: "Order picked up. Enjoy your meal!",        color: "#6b7280" },
-  cancelled: { icon: "❌", label: "Cancelled",          desc: "This order was cancelled by the vendor",   color: "#dc2626" },
-};
-
-function OrderStatusPage({ onBack }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const pollRef = useRef(null);
-
-  const fetchOrders = async () => {
-    const srn = localStorage.getItem("studentSrn");
-    try {
-      const res = await fetch(`${API}/orders/history?srn=${srn}`);
-      const data = await res.json();
-      const fetched = data.orders || [];
-      setOrders(fetched);
-      // Update selected order if open
-      if (selectedOrder) {
-        const updated = fetched.find(o => o.id === selectedOrder.id);
-        if (updated) setSelectedOrder(updated);
+        const res = await menuAPI.getFiltered(params);
+        setFilteredItems(res.data || []);
+      } catch (err) {
+        console.error('Filter error:', err);
+        setNotification('Filter failed. Check connection.');
+        setTimeout(() => setNotification(''), 3000);
       }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+      setLoading(false);
+    };
+    fetchFiltered();
+  }, [selectedFilter, selectedPriceFilter, currentScreen]);
+
+  const loadRestaurants = async () => {
+    setLoading(true);
+    try {
+      const response = await vendorsAPI.getAll();
+      setRestaurants(response.data);
+    } catch (error) {
+      console.error('Restaurant load error:', error);
+    }
+    setLoading(false);
+  };
+
+  const loadMenu = async (restaurant) => {
+    setCurrentRestaurant(restaurant);
+    setLoading(true);
+    try {
+      const res = await menuAPI.getByVendor(restaurant.vendor_id);
+      // Handle both array response and categorized object response
+      let flatMenu = [];
+      if (Array.isArray(res.data)) {
+        flatMenu = res.data;
+      } else if (res.data && typeof res.data === 'object') {
+        flatMenu = Object.values(res.data).flat();
+      }
+      setMenuItems(flatMenu);
+      setCurrentScreen('menu');
+    } catch (error) {
+       console.error('Menu load error:', error);
+       setNotification('Failed to load menu. Check connection.');
+       setTimeout(() => setNotification(''), 3000);
+    }
+    setLoading(false);
+  };
+
+  const loadHistory = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await ordersAPI.getHistory(currentUser.srn);
+      setOrderHistory(res.data.orders || []);
+    } catch (err) {
+      console.error('History load error:', err);
+    }
   };
 
   useEffect(() => {
-    fetchOrders();
-    pollRef.current = setInterval(fetchOrders, 5000); // poll every 5s
-    return () => clearInterval(pollRef.current);
-  }, []);
+    if (showSidebar) loadHistory();
+  }, [showSidebar]);
 
-  // Active orders (not completed/cancelled) shown first
-  const active = orders.filter(o => o.status !== "completed" && o.status !== "cancelled");
-  const past = orders.filter(o => o.status === "completed" || o.status === "cancelled");
+  const handleLogout = () => {
+    localStorage.clear();
+    setCurrentUser(null);
+    setCurrentScreen('welcome');
+    setShowSidebar(false);
+  };
 
-  if (selectedOrder) return <OrderDetail order={selectedOrder} onBack={() => setSelectedOrder(null)} />;
+  const addToCart = (item) => {
+    const existing = cart.find(i => i.item_id === item.item_id);
+    if (existing) {
+      setCart(cart.map(i => i.item_id === item.item_id ? { ...i, quantity: i.quantity + 1 } : i));
+    } else {
+      setCart([...cart, { ...item, quantity: 1 }]);
+    }
+    setNotification(`${item.name} added!`);
+    setTimeout(() => setNotification(''), 2000);
+  };
 
-  return (
-    <div className="page">
-      <header className="app-hdr">
-        <div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">Order Status</span></div>
-        <div className="hr"><span className="live-dot" />Live</div>
-      </header>
+  const updateQty = (id, delta) => {
+    setCart(cart.map(i => i.item_id === id ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i).filter(i => i.quantity > 0));
+  };
 
-      {loading ? (
-        <div className="skel-wrap">{[1,2].map(i => <div key={i} className="skel-i" />)}</div>
-      ) : orders.length === 0 ? (
-        <div className="empty-st"><div style={{fontSize:48,marginBottom:12}}>📋</div><p>No orders yet</p></div>
-      ) : (
-        <div style={{padding:"12px"}}>
-          {active.length > 0 && (
-            <>
-              <p className="os-section-lbl">🔴 Active Orders</p>
-              {active.map(o => <OrderStatusCard key={o.id} order={o} onClick={() => setSelectedOrder(o)} />)}
-            </>
-          )}
-          {past.length > 0 && (
-            <>
-              <p className="os-section-lbl" style={{marginTop:16}}>Past Orders</p>
-              {past.map(o => <OrderStatusCard key={o.id} order={o} onClick={() => setSelectedOrder(o)} />)}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+  const calculateTotal = () => cart.reduce((s, i) => s + (i.price * i.quantity), 0);
 
-function OrderStatusCard({ order, onClick }) {
-  const meta = STATUS_META[order.status] || STATUS_META.pending;
-  return (
-    <div className="os-card" onClick={onClick}>
-      <div className="os-card-left">
-        <span className="os-icon">{meta.icon}</span>
-        <div>
-          <p className="os-store">{order.store_name}</p>
-          <p className="os-num">#{order.order_number}</p>
-          <p className="os-label" style={{color: meta.color}}>{meta.label}</p>
+  // ==========================================
+  // RENDER: WELCOME
+  // ==========================================
+  if (currentScreen === 'welcome') {
+    return (
+      <div className="app welcome-view" style={{ textAlign: 'center', paddingTop: '100px' }}>
+        <div style={{ fontSize: '80px', marginBottom: '20px' }}>🍱</div>
+        <h1 style={{ color: '#F97316', fontWeight: '800', fontSize: '32px' }}>Campus Eats</h1>
+        <p style={{ color: '#6B7280', marginBottom: '40px' }}>Your favorite campus stalls, at your fingertips.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '0 40px' }}>
+          <button className="v-btn" onClick={() => setCurrentScreen('login')}>Sign In</button>
+          <button className="v-btn" style={{ background: '#FFF', color: '#F97316', border: '1px solid #F97316' }} onClick={() => setCurrentScreen('register')}>Register</button>
         </div>
       </div>
-      <div className="os-card-right">
-        <p className="os-amt">₹{order.total_amount}</p>
-        <span className="os-arrow">›</span>
+    );
+  }
+
+  // ==========================================
+  // RENDER: LOGIN/REGISTER (Simplified)
+  // ==========================================
+  if (currentScreen === 'login') {
+    return (
+      <div className="app header-padding" style={{ padding: '60px 40px' }}>
+        <h1 style={{ fontSize: '28px', marginBottom: '8px' }}>Sign In</h1>
+        <p style={{ color: '#6B7280', marginBottom: '32px' }}>Welcome back! Log in to continue.</p>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            const res = await authAPI.login(e.target.srn.value, e.target.pin.value);
+            localStorage.setItem('token', res.data.token);
+            localStorage.setItem('user', JSON.stringify(res.data.user));
+            setCurrentUser(res.data.user);
+            setCurrentScreen('home');
+            loadRestaurants();
+          } catch (err) { alert('Login failed'); }
+        }}>
+          <input className="v-input" name="srn" placeholder="SRN (e.g., R26EA001)" required />
+          <input className="v-input" name="pin" type="password" placeholder="4-digit PIN" required />
+          <button className="v-btn" type="submit">Log In</button>
+        </form>
+        <p style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px', color: '#6B7280' }}>
+          New student? <span style={{ color: '#F97316', fontWeight: '600', cursor: 'pointer' }} onClick={() => setCurrentScreen('register')}>Register here</span>
+        </p>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function OrderDetail({ order, onBack }) {
-  const meta = STATUS_META[order.status] || STATUS_META.pending;
-  const stepIdx = STATUS_STEPS.indexOf(order.status);
-  const isCancelled = order.status === "cancelled";
+  if (currentScreen === 'register') {
+     return (
+      <div className="app header-padding" style={{ padding: '60px 40px' }}>
+        <h1 style={{ fontSize: '28px', marginBottom: '8px' }}>Create Account</h1>
+        <p style={{ color: '#6B7280', marginBottom: '32px' }}>Join the campus food community!</p>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            const res = await authAPI.register(e.target.srn.value, e.target.pin.value, e.target.name.value);
+            localStorage.setItem('token', res.data.token);
+            localStorage.setItem('user', JSON.stringify(res.data.user));
+            setCurrentUser(res.data.user);
+            setCurrentScreen('home');
+            loadRestaurants();
+          } catch (err) { alert('Registration failed'); }
+        }}>
+          <input className="v-input" name="srn" placeholder="SRN" required />
+          <input className="v-input" name="name" placeholder="Full Name" required />
+          <input className="v-input" name="pin" type="password" placeholder="4-digit PIN" required />
+          <button className="v-btn" type="submit">Sign Up</button>
+        </form>
+        <p style={{ marginTop: '20px', textAlign: 'center', fontSize: '14px', color: '#6B7280' }}>
+          Already have an account? <span style={{ color: '#F97316', fontWeight: '600', cursor: 'pointer' }} onClick={() => setCurrentScreen('login')}>Sign In</span>
+        </p>
+      </div>
+    );
+  }
 
-  return (
-    <div className="page">
-      <header className="app-hdr">
-        <div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">Order Detail</span></div>
-        <div className="hr"><span className="live-dot" />Live</div>
-      </header>
-      <div style={{padding:"16px"}}>
-
-        {/* Status hero */}
-        <div className="od-hero" style={{borderColor: meta.color}}>
-          <div className="od-hero-icon">{meta.icon}</div>
-          <h2 className="od-hero-label" style={{color: meta.color}}>{meta.label}</h2>
-          <p className="od-hero-desc">{meta.desc}</p>
-          {order.status === "ready" && order.pickup_code && (
-            <div className="od-pickup">
-              <p className="od-pickup-lbl">Your Pickup Code</p>
-              <p className="od-pickup-code">{order.pickup_code}</p>
+  // ==========================================
+  // RENDER: HOME
+  // ==========================================
+  if (currentScreen === 'home') {
+    return (
+      <div className="app">
+        {notification && <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: '#333', color: 'white', padding: '10px 20px', borderRadius: '100px', zIndex: 1000, fontSize: '14px' }}>{notification}</div>}
+        
+        {/* Navbar */}
+        <header className="navbar">
+          <div className="nav-top">
+            <button className="icon-btn hamburger-btn" onClick={() => setShowSidebar(true)}>
+              <Menu size={24} />
+            </button>
+            <div className="location-picker">
+              <MapPin size={18} color="#F97316" />
+              <span>Reva University</span>
             </div>
-          )}
-        </div>
-
-        {/* Progress bar */}
-        {!isCancelled && (
-          <div className="od-progress">
-            {STATUS_STEPS.map((s, i) => (
-              <div key={s} className="od-step">
-                <div className={`od-step-dot ${i <= stepIdx ? "done" : ""}`}
-                  style={i <= stepIdx ? {background: meta.color, borderColor: meta.color} : {}}>
-                  {i < stepIdx ? "✓" : i === stepIdx ? "●" : ""}
-                </div>
-                <p className={`od-step-lbl ${i <= stepIdx ? "active" : ""}`}>{STATUS_META[s]?.label?.split(" ")[0]}</p>
-                {i < STATUS_STEPS.length - 1 && (
-                  <div className={`od-step-line ${i < stepIdx ? "done" : ""}`}
-                    style={i < stepIdx ? {background: meta.color} : {}} />
-                )}
-              </div>
-            ))}
+            <div style={{ width: 40 }} />
           </div>
-        )}
+          
+          <div className="search-box-wrap">
+            <Search className="icon" size={18} />
+            <input type="text" placeholder="Search for food..." />
+          </div>
+        </header>
 
-        {/* Order info */}
-        <div className="od-card">
-          <h3 className="od-card-title">Order Details</h3>
-          <div className="od-row"><span>Order ID</span><span className="od-val">#{order.order_number}</span></div>
-          <div className="od-row"><span>Restaurant</span><span className="od-val">{order.store_name}</span></div>
-          <div className="od-row"><span>Items</span><span className="od-val">{order.items_count} item{order.items_count !== 1 ? "s" : ""}</span></div>
-          <div className="od-row"><span>Total Paid</span><span className="od-val od-total">₹{order.total_amount}</span></div>
-          <div className="od-row"><span>Placed</span><span className="od-val">{new Date(order.created_at).toLocaleTimeString("en-IN", {hour:"2-digit",minute:"2-digit"})}</span></div>
-          {order.pickup_code && (
-            <div className="od-row"><span>Pickup Code</span><span className="od-val" style={{color:"#E85D04",fontWeight:800,letterSpacing:3}}>{order.pickup_code}</span></div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── HOME ──────────────────────────────────────────────────────────────────────
-function HomePage({ cart, onVendorSelect, onCartOpen, student, onMenuOpen }) {
-  const [vendors, setVendors] = useState([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const cartCount = Object.values(cart).reduce((s, i) => s + i.quantity, 0);
-
-  useEffect(() => {
-    fetch(`${API}/vendors`).then(r => r.json()).then(d => setVendors(d.vendors || [])).catch(() => setVendors([])).finally(() => setLoading(false));
-  }, []);
-
-  const filtered = vendors.filter(v => v.store_name?.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <div className="page">
-      <header className="app-hdr">
-        <div className="hl">
-          <button className="ibtn" onClick={onMenuOpen}>{Icon.menu}</button>
-          <span className="h-logo">🍽️</span>
-          <span className="h-title">Campus Eats</span>
-        </div>
-        <div className="hr">
-          <button className="ibtn cart-ibtn" onClick={onCartOpen}>{Icon.cart}{cartCount > 0 && <span className="cbadge">{cartCount}</span>}</button>
-        </div>
-      </header>
-      <div className="hero-band">
-        <p className="hero-hi">Hey {student?.name?.split(" ")[0] || "there"} 👋</p>
-        <h2 className="hero-q">What are you craving today?</h2>
-        <div className="srch-row">
-          <span className="srch-ico">{Icon.search}</span>
-          <input type="text" placeholder="Search restaurants or dishes..." value={search} onChange={e => setSearch(e.target.value)} />
-          <span className="filt-ico">{Icon.filter}</span>
-        </div>
-      </div>
-      <p className="sec-lbl">All Restaurants</p>
-      {loading ? (
-        <div className="skel-wrap">{[1,2,3].map(i => <div key={i} className="skel-v" />)}</div>
-      ) : filtered.length === 0 ? (
-        <div className="empty-st">No restaurants found</div>
-      ) : (
-        <div className="vlist">
-          {filtered.map((v, idx) => (
-            <div key={v.vendor_id} className="vcard" onClick={() => onVendorSelect(v)}>
-              <div className="vcard-img">
-                <VendorPlaceholder name={v.store_name} color={VENDOR_COLORS[idx % VENDOR_COLORS.length]} />
-                <span className="tag-ta">TAKEAWAY AVAILABLE</span>
-                <span className="prep-tag"><span className="pt-i">{Icon.clock}</span>{v.prep_time || "20-30 min"}</span>
-              </div>
-              <div className="vcard-body">
-                <div className="vcard-row"><h3>{v.store_name}</h3><span className="rtag"><span className="star-i">{Icon.star}</span>{v.rating || "4.0"}</span></div>
-                <p className="vloc"><span className="loc-i">{Icon.location}</span>{v.location || "Campus Food Court"}</p>
-              </div>
+        {/* Categories Ribbons */}
+        <div className="categories-scroll">
+          {CATEGORIES.map(cat => (
+            <div 
+              key={cat.name} 
+              className={`category-item ${selectedFilter === cat.name ? 'active' : ''}`}
+              onClick={() => setSelectedFilter(cat.name)}
+            >
+              <div className="cat-icon-box">{cat.icon}</div>
+              <span>{cat.name}</span>
             </div>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
 
-// ── MENU ──────────────────────────────────────────────────────────────────────
-function MenuPage({ vendor, cart, onUpdateCart, onBack, onCartOpen }) {
-  const [menu, setMenu] = useState({});
-  const [loading, setLoading] = useState(true);
-  const cartCount = Object.values(cart).reduce((s, i) => s + i.quantity, 0);
-
-  useEffect(() => {
-    fetch(`${API}/vendors/${vendor.vendor_id}/menu`).then(r => r.json()).then(d => setMenu(d)).catch(() => setMenu({})).finally(() => setLoading(false));
-  }, [vendor.vendor_id]);
-
-  const getQty = (item) => cart[item.id]?.quantity || 0;
-  const add = (item) => onUpdateCart(item.id, getQty(item) + 1, item, vendor);
-  const remove = (item) => onUpdateCart(item.id, Math.max(0, getQty(item) - 1), item, vendor);
-
-  return (
-    <div className="page">
-      <header className="app-hdr">
-        <div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">{vendor.store_name}</span></div>
-        <button className="ibtn cart-ibtn" onClick={onCartOpen}>{Icon.cart}{cartCount > 0 && <span className="cbadge">{cartCount}</span>}</button>
-      </header>
-      <div className="v-hero"><VendorPlaceholder name={vendor.store_name} color={VENDOR_COLORS[1]} />
-        <div className="vh-info">
-          <h2>{vendor.store_name}</h2>
-          <div className="vh-meta">
-            <span><span className="vm-i">{Icon.location}</span>{vendor.location || "Campus"}</span>
-            <span><span className="vm-i">{Icon.clock}</span>{vendor.prep_time || "20-30 min"}</span>
-            <span className="rtag"><span className="star-i">{Icon.star}</span>{vendor.rating || "4.0"}</span>
-          </div>
-        </div>
-      </div>
-      <p className="sec-lbl" style={{padding:"14px 16px 4px"}}>Menu</p>
-      {loading ? (
-        <div className="skel-wrap">{[1,2,3].map(i => <div key={i} className="skel-i" />)}</div>
-      ) : Object.keys(menu).length === 0 ? (
-        <div className="empty-st">No items available</div>
-      ) : (
-        Object.entries(menu).map(([cat, items]) => (
-          <div key={cat} className="mcat">
-            <h3 className="mcat-hd"><span className="cat-bar" />{cat}</h3>
-            {items.map(item => {
-              const qty = getQty(item);
-              return (
-                <div key={item.id} className="mitem">
-                  <div className="mitem-l">
-                    <span className="veg-i">{item.veg_non_veg === "non-veg" ? Icon.nonveg : Icon.veg}</span>
-                    <div><p className="mi-name">{item.name}</p><p className="mi-price">₹{item.price}</p></div>
-                  </div>
-                  <div className="mitem-r">
-                    <div className="mi-thumb">{item.name?.charAt(0)}</div>
-                    {qty === 0 ? (
-                      <button className="add-btn" onClick={() => add(item)}>Add <span className="add-ico">{Icon.plus}</span></button>
-                    ) : (
-                      <div className="qty-ctrl"><button onClick={() => remove(item)}>{Icon.minus}</button><span>{qty}</span><button onClick={() => add(item)}>{Icon.plus}</button></div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))
-      )}
-      {cartCount > 0 && <div className="cart-bar" onClick={onCartOpen}><span>{cartCount} item{cartCount > 1 ? "s" : ""} added</span><span>View Cart →</span></div>}
-    </div>
-  );
-}
-
-// ── CART ──────────────────────────────────────────────────────────────────────
-function CartPage({ cart, onUpdateCart, onBack, onOrderPlaced }) {
-  const [instructions, setInstructions] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const items = Object.values(cart);
-  const vendorName = items[0]?.storeName || "";
-  const vendorId = items[0]?.vendorId || "";
-  const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
-
-  const placeOrder = async () => {
-    setLoading(true); setError("");
-    try {
-      const res = await fetch(`${API}/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("studentToken") || ""}` },
-        body: JSON.stringify({ vendorId, storeName: vendorName, totalAmount: total, studentSrn: localStorage.getItem("studentSrn"), paymentStatus: "paid", paymentId: "cash_" + Date.now(), items: items.map(i => ({ menuItemId: i.id, name: i.name, quantity: i.quantity, price: i.price })) }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Order failed");
-      onOrderPlaced(data.order);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  if (items.length === 0) return (
-    <div className="page">
-      <header className="app-hdr"><div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">Your Cart</span></div></header>
-      <div className="empty-st" style={{marginTop:80}}><div style={{fontSize:48,marginBottom:12}}>🛒</div><p>Your cart is empty</p><button className="btn-org" style={{marginTop:16,width:"auto",padding:"12px 28px"}} onClick={onBack}>Browse Restaurants</button></div>
-    </div>
-  );
-
-  return (
-    <div className="page">
-      <header className="app-hdr"><div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">Your Cart</span></div></header>
-      <div className="cv-row"><span className="cv-ico">🏪</span><div><p className="cv-lbl">ORDERING FROM</p><p className="cv-name">{vendorName}</p></div></div>
-      <div className="ctabs"><button className="ctab active">🛍️ Pickup</button><button className="ctab">🚲 Delivery</button></div>
-      <div className="csec">
-        <h3 className="csec-ttl">{Icon.receipt} Order Summary</h3>
-        {items.map(item => (
-          <div key={item.id} className="citem">
-            <div className="citem-l"><span className="veg-i">{Icon.veg}</span><div><p className="ci-name">{item.name}</p><p className="ci-sub">₹{item.price}</p></div></div>
-            <div className="citem-r">
-              <span className="ci-amt">₹{item.price * item.quantity}</span>
-              <div className="qty-ctrl sm"><button onClick={() => onUpdateCart(item.id, item.quantity - 1, item, { store_name: vendorName, vendor_id: vendorId })}>{Icon.minus}</button><span>{item.quantity}</span><button onClick={() => onUpdateCart(item.id, item.quantity + 1, item, { store_name: vendorName, vendor_id: vendorId })}>{Icon.plus}</button></div>
+        {/* Filter Pills */}
+        <div className="filters-container">
+          <div className="filter-pill"><Settings size={14} /></div>
+          {PRICE_FILTERS.map(pf => (
+            <div 
+              key={pf.label} 
+              className={`filter-pill ${selectedPriceFilter === pf ? 'active' : (pf.filter === null && selectedPriceFilter === null) ? 'active' : ''}`}
+              onClick={() => setSelectedPriceFilter(pf.filter === null ? null : pf)}
+            >
+              {pf.label}
             </div>
-          </div>
-        ))}
-      </div>
-      <div className="csec"><h3 className="csec-ttl">Cooking Instructions</h3><textarea className="cook-ta" placeholder="E.g. Less spicy, no onions..." value={instructions} onChange={e => setInstructions(e.target.value)} rows={3} /></div>
-      <div className="csec">
-        <h3 className="csec-ttl">Bill Details</h3>
-        <div className="bill-r"><span>Item Total</span><span>₹{total}</span></div>
-        <div className="bill-r"><span>Platform Fee</span><span className="free-lbl">FREE</span></div>
-        <div className="bill-div" />
-        <div className="bill-r bill-tot"><span>Total</span><span>₹{total}</span></div>
-      </div>
-      {error && <p className="errmsg" style={{margin:"0 16px 12px"}}>⚠️ {error}</p>}
-      <div className="cart-ftr"><div><p className="cf-lbl">TOTAL</p><p className="cf-amt">₹{total}</p></div><button className="place-btn" onClick={placeOrder} disabled={loading}>{loading ? "Placing..." : `Place Order  ₹${total}`}</button></div>
-    </div>
-  );
-}
-
-// ── SUCCESS ───────────────────────────────────────────────────────────────────
-function SuccessPage({ order, onHome, onTrack }) {
-  return (
-    <div className="page succ-pg">
-      <header className="app-hdr"><span className="h-title">Order Placed</span></header>
-      <div className="succ-body">
-        <div className="succ-circle">{Icon.check}</div>
-        <h2>Order Placed!</h2>
-        <p className="succ-sub">Your order has been placed successfully.</p>
-        <div className="succ-card">
-          <p className="sc-lbl">Total Paid</p>
-          <p className="sc-amt">₹{order?.total_amount}</p>
-          <div className="sc-div" />
-          <p className="sc-pickup">🕐 Pickup in ~10 min</p>
-          {order?.pickup_code && (<><p className="sc-code-lbl">Pickup Code</p><p className="sc-code">{order.pickup_code}</p></>)}
+          ))}
         </div>
-        <button className="btn-org" style={{marginBottom:12}} onClick={onTrack}>Track Order Status</button>
-        <button className="btn-dark" onClick={onHome}>Back to Home</button>
-      </div>
-    </div>
-  );
-}
 
-// ── HISTORY ───────────────────────────────────────────────────────────────────
-function HistoryPage({ onBack }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+        {/* Welcome Section */}
+        <div style={{ padding: '0 20px 20px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: '800' }}>Welcome, {currentUser?.name?.split(' ')[0] || 'iqtre'}!</h1>
+          <p style={{ color: '#6B7280', fontSize: '15px' }}>What are you craving today?</p>
+        </div>
 
-  useEffect(() => {
-    const srn = localStorage.getItem("studentSrn");
-    fetch(`${API}/orders/history?srn=${srn}`).then(r => r.json()).then(d => setOrders(d.orders || [])).catch(() => setOrders([])).finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="page">
-      <header className="app-hdr"><div className="hl"><button className="ibtn" onClick={onBack}>{Icon.back}</button><span className="h-title">Order History</span></div></header>
-      {loading ? <div className="skel-wrap">{[1,2,3].map(i => <div key={i} className="skel-i" />)}</div>
-        : orders.length === 0 ? <div className="empty-st"><div style={{fontSize:48,marginBottom:12}}>📋</div><p>No orders yet</p></div>
-        : (
-          <div className="hist-list">
-            {orders.map(o => (
-              <div key={o.id} className="hcard">
-                <div className="hcard-top">
-                  <div><p className="hc-store">{o.store_name}</p><p className="hc-date">{new Date(o.created_at).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</p></div>
-                  <span className={`sbadge s-${o.status}`}>{o.status}</span>
+        {/* Content: Filtered Items OR Stalls */}
+        {isFiltering ? (
+          <div className="home-section">
+            <div className="section-head">
+              <h2>{selectedFilter !== 'ALL STALLS' ? selectedFilter : 'Filtered'} Items</h2>
+              <span style={{ color: '#9CA3AF', fontSize: '13px' }}>{filteredItems.length} found</span>
+            </div>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF' }}>Loading...</div>
+            ) : filteredItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF' }}>No items match your filters</div>
+            ) : (
+              <div className="menu-grid">
+                {filteredItems.map(item => (
+                  <div key={item.item_id} className="grid-item-card">
+                    <div className="grid-img-wrap">
+                      <span className="item-badge" style={{ color: item.veg_non_veg === 'VEG' ? '#10B981' : '#EF4444' }}>{item.veg_non_veg === 'VEG' ? '● Veg' : '● Non-Veg'}</span>
+                      {item.veg_non_veg === 'NON-VEG' ? '🍗' : item.food_type === 'BIRYANI' ? '🍛' : item.food_type === 'NOODLES' ? '🍜' : item.food_type === 'DOSA' ? '🥞' : item.food_type === 'ROLLS' ? '🌯' : item.food_type === 'BEVERAGES' ? '☕' : item.food_type === 'DESSERT' ? '🍨' : '🥬'}
+                    </div>
+                    <h4>{item.name}</h4>
+                    <p className="brand">by {item.vendor_name}</p>
+                    <div className="card-meta" style={{ fontSize: '10px' }}>
+                      <span><Star size={10} fill="#F97316" color="#F97316" /> {item.avg_rating || '–'}</span>
+                      {item.is_popular && <span className="tag-pill" style={{ background: '#FEF3C7', color: '#92400E', fontSize: '9px', padding: '1px 6px' }}>Popular</span>}
+                    </div>
+                    <div className="item-bot-row" style={{ marginTop: '8px' }}>
+                      <span className="price">₹{item.price}</span>
+                      <button className="card-add-btn" style={{ position: 'static' }} onClick={() => addToCart(item)}><Plus size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="home-section">
+            <div className="section-head">
+              <h2>Popular Stalls</h2>
+              <span className="see-all">See All <ChevronRight size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /></span>
+            </div>
+            
+            {restaurants.map(stall => (
+              <div key={stall.vendor_id} className="popular-card" onClick={() => loadMenu(stall)}>
+                <div className="card-img-wrap">
+                  {stall.name === 'GRUB FOODS' ? '🍛' : stall.name === 'ROLL ME' ? '🌯' : stall.name === 'SIDDI VINAYAKA GARDEN' ? '🏪' : '🍽️'}
                 </div>
-                <div className="hcard-bot"><span className="hc-items">{o.items_count} item{o.items_count > 1 ? "s" : ""}</span><span className="hc-amt">₹{o.total_amount}</span></div>
-                {o.pickup_code && <p className="hc-code">Pickup Code: <strong>{o.pickup_code}</strong></p>}
+                <div className="card-content">
+                  <h3>{stall.name}</h3>
+                  <div className="card-meta">
+                    <span><Star size={12} fill="#F97316" color="#F97316" /> {stall.rating}</span>
+                    <span>• {stall.prep_time} mins</span>
+                  </div>
+                  <div style={{ color: '#6B7280', fontSize: '12px', marginBottom: '8px' }}>{stall.location}</div>
+                  <div className="card-tags">
+                    <span className="tag-pill">Free Delivery</span>
+                    <span className="tag-pill">Lowest Price</span>
+                  </div>
+                </div>
+                <div className="card-add-btn">
+                  <Plus size={18} />
+                </div>
               </div>
             ))}
           </div>
         )}
-    </div>
-  );
+
+        {/* Sidebar Overlay */}
+        {showSidebar && <div className="sidebar-overlay" onClick={() => setShowSidebar(false)} />}
+        <div className={`sidebar sidebar-left ${showSidebar ? 'open' : ''}`}>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '800' }}>My Account</h2>
+            <button className="icon-btn" onClick={() => setShowSidebar(false)}><X size={22} /></button>
+          </div>
+
+          {/* Profile Card */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: '#FFF7ED', padding: '16px', borderRadius: '16px', marginBottom: '20px' }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#F97316', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: '800', flexShrink: 0 }}>
+              {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <div>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '2px' }}>{currentUser?.name}</h3>
+              <p style={{ color: '#6B7280', fontSize: '13px', fontWeight: '600' }}>{currentUser?.srn}</p>
+            </div>
+          </div>
+
+          {/* Current Order */}
+          {currentOrder && (
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ fontSize: '13px', fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>🔴 Live Order</p>
+              <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: '16px', padding: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: '700', fontSize: '15px' }}>{currentOrder.storeName}</span>
+                  <span style={{ color: '#F97316', fontWeight: '700', fontSize: '13px' }}>#{currentOrder.orderId}</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '8px' }}>{currentOrder.items?.map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ background: '#F97316', color: 'white', fontSize: '10px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px' }}>PREPARING</span>
+                  <span style={{ fontWeight: '800', color: '#F97316' }}>₹{currentOrder.totalAmount}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Order History */}
+          <p style={{ fontSize: '13px', fontWeight: '700', color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Order History</p>
+          <div style={{ overflowY: 'auto', maxHeight: '240px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {orderHistory.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF', fontSize: '13px' }}>No past orders yet</div>
+            ) : (
+              orderHistory.slice(0, 5).map(order => (
+                <div key={order.id} style={{ background: '#F3F4F6', borderRadius: '12px', padding: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: '700', fontSize: '14px' }}>{order.store_name}</span>
+                    <span style={{ color: '#F97316', fontWeight: '700', fontSize: '12px' }}>#{order.order_number}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#9CA3AF', marginBottom: '6px' }}>{new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', background: order.status === 'completed' ? '#D1FAE5' : '#FEF3C7', color: order.status === 'completed' ? '#065F46' : '#92400E' }}>{order.status?.toUpperCase()}</span>
+                    <span style={{ fontWeight: '800', fontSize: '13px' }}>₹{order.total_amount}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Full History Link */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: '#F3F4F6', borderRadius: '12px', cursor: 'pointer', marginBottom: '12px' }} onClick={() => { setCurrentScreen('history'); setShowSidebar(false); }}>
+            <History size={18} color="#6B7280" />
+            <span style={{ fontWeight: '600', fontSize: '14px' }}>View All Orders</span>
+            <ChevronRight size={16} color="#9CA3AF" style={{ marginLeft: 'auto' }} />
+          </div>
+
+          {/* Logout */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', background: '#FFF1F2', borderRadius: '12px', cursor: 'pointer' }} onClick={handleLogout}>
+            <LogOut size={18} color="#EF4444" />
+            <span style={{ fontWeight: '600', color: '#EF4444', fontSize: '14px' }}>Log Out</span>
+          </div>
+        </div>
+
+        {/* Bottom Nav */}
+        <nav className="bottom-nav">
+          <div className="nav-tab active">
+            <LayoutGrid size={24} />
+            <span>Home</span>
+          </div>
+          <div className="nav-tab" onClick={() => setCurrentScreen('history')}>
+            <History size={24} />
+            <span>Search</span>
+          </div>
+          <div className="nav-tab">
+            <Heart size={24} />
+            <span>Fav</span>
+          </div>
+          <div className="nav-tab" onClick={() => setCurrentScreen('cart')}>
+            <ShoppingCart size={24} />
+            <span style={{ position: 'relative' }}>Cart {cart.length > 0 && <span style={{ position: 'absolute', top: -5, right: -10, background: '#F97316', color: 'white', fontSize: '8px', padding: '2px 5px', borderRadius: '50%' }}>{cart.length}</span>}</span>
+          </div>
+        </nav>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: MENU (Grid View)
+  // ==========================================
+  if (currentScreen === 'menu') {
+    return (
+      <div className="app">
+        <header className="sub-header">
+           <button className="back-btn" onClick={() => setCurrentScreen('home')}><X size={18} /></button>
+           <h2>{currentRestaurant?.name}</h2>
+        </header>
+
+        <div className="home-section" style={{ paddingTop: '20px' }}>
+           <div className="section-head">
+              <h2>Top Menu Items</h2>
+           </div>
+           
+           <div className="menu-grid">
+              {menuItems.map(item => (
+                <div key={item.item_id} className="grid-item-card">
+                  <div className="grid-img-wrap">
+                    <span className="item-badge">● Veg</span>
+                    {item.veg_non_veg === 'NON-VEG' ? '🍗' : '🥬'}
+                  </div>
+                  <h4>{item.name}</h4>
+                  <p className="brand">by {currentRestaurant?.name}</p>
+                  <div className="card-meta" style={{ fontSize: '10px' }}>
+                    <span><Star size={10} fill="#F97316" color="#F97316" /> 4.3</span>
+                    <span>• 15-20 mins</span>
+                  </div>
+                  <div className="item-bot-row" style={{ marginTop: '8px' }}>
+                    <span className="price">₹{item.price}</span>
+                    <button className="card-add-btn" style={{ position: 'static' }} onClick={() => addToCart(item)}><Plus size={16} /></button>
+                  </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Floating Cart Button */}
+        {cart.length > 0 && (
+          <div onClick={() => setCurrentScreen('cart')} style={{ position: 'fixed', bottom: 30, left: '50%', transform: 'translateX(-50%)', background: '#F97316', color: 'white', padding: '16px 32px', borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 8px 30px rgba(249,115,22,0.4)', cursor: 'pointer', zIndex: 100 }}>
+             <ShoppingCart size={20} />
+             <span style={{ fontWeight: '700' }}>View Cart ({cart.length}) • ₹{calculateTotal()}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: CART
+  // ==========================================
+  if (currentScreen === 'cart') {
+    return (
+      <div className="app">
+        <header className="sub-header">
+           <button className="back-btn" onClick={() => setCurrentScreen('home')}>←</button>
+           <h2>Bill Summary</h2>
+        </header>
+
+        <div className="cart-list">
+           {cart.length === 0 ? (
+             <div style={{ textAlign: 'center', padding: '100px 0' }}>
+                <ShoppingCart size={64} color="#E5E7EB" style={{ margin: '0 auto 20px' }} />
+                <p style={{ color: '#9CA3AF' }}>Your cart is empty</p>
+                <button className="v-btn" style={{ width: 'auto', marginTop: '20px', padding: '12px 24px' }} onClick={() => setCurrentScreen('home')}>Explore Food</button>
+             </div>
+           ) : (
+             <>
+                <div style={{ background: '#F3F4F6', padding: '16px', borderRadius: '20px', marginBottom: '24px' }}>
+                   {cart.map(i => (
+                     <div key={i.item_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E5E7EB' }}>
+                        <div>
+                           <div style={{ fontWeight: '700' }}>{i.name}</div>
+                           <div style={{ color: '#F97316', fontSize: '14px', fontWeight: '600' }}>₹{i.price}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'white', padding: '4px 12px', borderRadius: '100px' }}>
+                           <button onClick={() => updateQty(i.item_id, -1)} style={{ border: 'none', background: 'none', fontSize: '20px', color: '#9CA3AF' }}>-</button>
+                           <span style={{ fontWeight: '700' }}>{i.quantity}</span>
+                           <button onClick={() => updateQty(i.item_id, 1)} style={{ border: 'none', background: 'none', fontSize: '18px', color: '#F97316' }}>+</button>
+                        </div>
+                     </div>
+                   ))}
+                </div>
+
+                <div className="c-summary">
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ color: '#6B7280' }}>Total Price</span>
+                      <span style={{ fontWeight: '700' }}>₹{calculateTotal()}</span>
+                   </div>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ color: '#6B7280' }}>Delivery/Package</span>
+                      <span style={{ fontWeight: '700' }}>₹20</span>
+                   </div>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', paddingTop: '16px', borderTop: '2px dashed #E5E7EB' }}>
+                      <span style={{ fontWeight: '800', fontSize: '18px' }}>Grand Total</span>
+                      <span style={{ fontWeight: '800', fontSize: '18px', color: '#F97316' }}>₹{calculateTotal() + 20}</span>
+                   </div>
+                   
+                   <button className="v-btn" style={{ marginTop: '30px' }} onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const orderPayload = {
+                          vendorId: currentRestaurant.vendor_id,
+                          storeName: currentRestaurant.name,
+                          totalAmount: calculateTotal() + 20,
+                          items: cart.map(c => ({ item_id: c.item_id, name: c.name, quantity: c.quantity, price: c.price })),
+                          studentSrn: currentUser.srn
+                        };
+                        const res = await ordersAPI.create(orderPayload);
+                        setCurrentOrder({ ...orderPayload, orderId: res.data?.order_number || res.data?.id || '—' });
+                        setCart([]);
+                        setCurrentScreen('success');
+                      } catch (err) { alert('Order failed: ' + (err.response?.data?.message || err.message)); }
+                      setLoading(false);
+                   }}>{loading ? 'Processing...' : 'Place Order'}</button>
+                </div>
+             </>
+           )}
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: SUCCESS
+  // ==========================================
+  if (currentScreen === 'success') {
+    return (
+      <div className="app header-padding" style={{ textAlign: 'center', padding: '100px 40px' }}>
+         <div style={{ fontSize: '80px', marginBottom: '20px' }}>🎉</div>
+         <h1 style={{ fontSize: '28px', fontWeight: '800', marginBottom: '12px' }}>Order Placed!</h1>
+         <p style={{ color: '#6B7280', marginBottom: '40px' }}>Head over to the stall and show your pickup code.</p>
+         <button className="v-btn" onClick={() => setCurrentScreen('home')}>Back to Home</button>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: HISTORY
+  // ==========================================
+  if (currentScreen === 'history') {
+    return (
+      <div className="app">
+        <header className="sub-header">
+           <button className="back-btn" onClick={() => setCurrentScreen('home')}>←</button>
+           <h2>Order History</h2>
+        </header>
+        <div style={{ padding: '20px' }}>
+           {orderHistory.length === 0 ? (
+             <div style={{ textAlign: 'center', padding: '100px 0' }}><p style={{ color: '#9CA3AF' }}>No orders yet</p></div>
+           ) : (
+             orderHistory.map(order => (
+               <div key={order.id} style={{ background: 'white', padding: '16px', borderRadius: '16px', border: '1px solid #F3F4F6', marginBottom: '12px', boxShadow: 'var(--card-shadow)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                     <span style={{ fontWeight: '700' }}>{order.store_name}</span>
+                     <span style={{ color: '#F97316', fontWeight: '600' }}>#{order.order_number}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#6B7280' }}>{new Date(order.created_at).toLocaleDateString()}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', alignItems: 'center' }}>
+                     <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '10px', background: '#F3F4F6', fontWeight: '700' }}>{order.status.toUpperCase()}</span>
+                     <span style={{ fontWeight: '800' }}>₹{order.total_amount}</span>
+                  </div>
+               </div>
+             ))
+           )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
-// ── MAIN ──────────────────────────────────────────────────────────────────────
-export default function App() {
-  const [student, setStudent] = useState(() => {
-    const srn = localStorage.getItem("studentSrn");
-    const name = localStorage.getItem("studentName");
-    return srn ? { srn, name } : null;
-  });
-  const [page, setPage] = useState("home");
-  const [selectedVendor, setSelectedVendor] = useState(null);
-  const [cart, setCart] = useState({});
-  const [completedOrder, setCompletedOrder] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const updateCart = useCallback((itemId, qty, item, vendor) => {
-    setCart(prev => {
-      const next = { ...prev };
-      if (qty <= 0) delete next[itemId];
-      else next[itemId] = { ...item, quantity: qty, vendorId: vendor.vendor_id, storeName: vendor.store_name };
-      return next;
-    });
-  }, []);
-
-  const logout = () => { localStorage.clear(); setStudent(null); setCart({}); setPage("home"); setMenuOpen(false); };
-  const navigate = (p) => setPage(p);
-
-  if (!student) return <LoginPage onLogin={s => setStudent(s)} />;
-
-  return (
-    <>
-      <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} student={student} onNavigate={navigate} onLogout={logout} />
-
-      {page === "profile" && <ProfilePage student={student} onBack={() => setPage("home")} />}
-      {page === "orderstatus" && <OrderStatusPage onBack={() => setPage("home")} />}
-      {page === "history" && <HistoryPage onBack={() => setPage("home")} />}
-      {page === "success" && <SuccessPage order={completedOrder} onHome={() => { setCart({}); setCompletedOrder(null); setPage("home"); }} onTrack={() => { setCart({}); setCompletedOrder(null); setPage("orderstatus"); }} />}
-      {page === "cart" && <CartPage cart={cart} onUpdateCart={updateCart} onBack={() => setPage(selectedVendor ? "menu" : "home")} onOrderPlaced={o => { setCompletedOrder(o); setPage("success"); }} />}
-      {page === "menu" && selectedVendor && <MenuPage vendor={selectedVendor} cart={cart} onUpdateCart={updateCart} onBack={() => setPage("home")} onCartOpen={() => setPage("cart")} />}
-      {page === "home" && <HomePage cart={cart} student={student} onVendorSelect={v => { setSelectedVendor(v); setPage("menu"); }} onCartOpen={() => setPage("cart")} onMenuOpen={() => setMenuOpen(true)} />}
-    </>
-  );
-}
+export default App;

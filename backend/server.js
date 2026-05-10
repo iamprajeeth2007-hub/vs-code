@@ -2,56 +2,109 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// Import database (connection test runs automatically on import)
-const pool = require('./config/database');
+const app = express();
+const PORT = process.env.PORT || 3000;
 
 // Import routes
 const authRoutes = require('./routes/auth');
-const vendorRoutes = require('./routes/vendors');
-const orderRoutes = require('./routes/orders');
+const vendorsRoutes = require('./routes/vendors');
+const menuRoutes = require('./routes/menu');
+const ordersRoutes = require('./routes/orders');
+const dishesRoutes = require('./routes/dishes');
+const adminRoutes = require('./routes/admin');
 const studentsRoutes = require('./routes/students');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
 
 // ==========================================
 // MIDDLEWARE
 // ==========================================
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ==========================================
-// HEALTH CHECK
-// ==========================================
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Campus Eats API is running' });
+// Case-insensitive SRN normalization middleware
+app.use((req, res, next) => {
+  if (req.body) {
+    if (req.body.srn) req.body.srn = req.body.srn.toUpperCase();
+    if (req.body.studentSrn) req.body.studentSrn = req.body.studentSrn.toUpperCase();
+  }
+  if (req.query) {
+    if (req.query.srn) req.query.srn = req.query.srn.toUpperCase();
+    if (req.query.studentSrn) req.query.studentSrn = req.query.studentSrn.toUpperCase();
+  }
+  next();
+});
+
+// Request logging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
 });
 
 // ==========================================
 // ROUTES
 // ==========================================
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Campus Eats Backend is running!',
+    timestamp: new Date(),
+    environment: process.env.NODE_ENV || 'development',
+    database: 'PostgreSQL/Supabase'
+  });
+});
+
+// API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/vendors', vendorRoutes);
-app.use('/api/orders', orderRoutes);
+app.use('/api/vendors', vendorsRoutes);
+app.use('/api/menu', menuRoutes);
+app.use('/api/orders', ordersRoutes);
+app.use('/api/dishes', dishesRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentsRoutes);
 
-// ==========================================
-// 404 HANDLER
-// ==========================================
-app.use((req, res) => {
-  res.status(404).json({ error: `Route ${req.method} ${req.url} not found` });
+// Root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Campus Eats API Server',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      auth: {
+        login: 'POST /api/auth/login',
+        register: 'POST /api/auth/register'
+      },
+      vendors: 'GET /api/vendors',
+      search: 'GET /api/vendors/search?q=QUERY&filter=veg|nonveg|all',
+      menu: 'GET /api/vendors/:vendorId/menu?filter=veg|nonveg|all',
+      orders: {
+        create: 'POST /api/orders',
+        history: 'GET /api/orders/history'
+      },
+      dishes: {
+        ratings: 'GET /api/dishes/:itemId/ratings',
+        rate: 'POST /api/dishes/:itemId/rate',
+        reviews: 'GET /api/dishes/:itemId/reviews',
+        review: 'POST /api/dishes/:itemId/review'
+      }
+    }
+  });
 });
 
 // ==========================================
-// ERROR HANDLER
+// ERROR HANDLING
 // ==========================================
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Error handler
 app.use((err, req, res, next) => {
-  console.error('Server error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  console.error('Error:', err);
+  res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
 // ==========================================
@@ -63,16 +116,6 @@ app.listen(PORT, () => {
   console.log('=================================');
   console.log(`📡 API: http://localhost:${PORT}`);
   console.log(`🏥 Health: http://localhost:${PORT}/api/health`);
-  console.log('=================================');
-  console.log('📋 Available Routes:');
-  console.log('   POST /api/auth/register');
-  console.log('   POST /api/auth/login');
-  console.log('   GET  /api/vendors');
-  console.log('   GET  /api/vendors/:id/menu');
-  console.log('   POST /api/orders');
-  console.log('   GET  /api/orders/history');
-  console.log('   GET  /api/students/count');
+  console.log(`📚 Docs: http://localhost:${PORT}/`);
   console.log('=================================');
 });
-
-module.exports = app;

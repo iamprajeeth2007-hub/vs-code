@@ -5,7 +5,8 @@ const  pool  = require('../config/database');
 
 exports.registerStudent = async (req, res) => {
   try {
-    const { srn, name, pin, phone, email } = req.body;
+    const { srn: rawSrn, name, pin, phone, email } = req.body;
+    const srn = rawSrn ? rawSrn.toUpperCase() : null;
 
     if (!srn || !pin) {
       return res.status(400).json({ error: 'SRN and PIN are required' });
@@ -19,13 +20,25 @@ exports.registerStudent = async (req, res) => {
     const pinHash = await bcrypt.hash(pin, 10);
 
     const result = await pool.query(
-      'INSERT INTO students (srn, name, pin_hash, phone, email) VALUES ($1, $2, $3, $4, $5) RETURNING id, srn, name, email',
-      [srn, name, pinHash, phone, email]
+      'INSERT INTO students (srn, name, pin_hash) VALUES ($1, $2, $3) RETURNING id, srn, name',
+      [srn, name, pinHash]
+    );
+
+    const user = result.rows[0];
+    const token = jwt.sign(
+      { id: user.id, srn: user.srn, type: 'student' },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
     );
 
     res.status(201).json({
       message: 'Registration successful',
-      student: result.rows[0]
+      token,
+      user: {
+        id: user.id,
+        srn: user.srn,
+        name: user.name
+      }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -35,7 +48,8 @@ exports.registerStudent = async (req, res) => {
 
 exports.loginStudent = async (req, res) => {
   try {
-    const { srn, pin } = req.body;
+    const { srn: rawSrn, pin } = req.body;
+    const srn = rawSrn ? rawSrn.toUpperCase() : null;
 
     if (!srn || !pin) {
       return res.status(400).json({ error: 'SRN and PIN are required' });
@@ -62,11 +76,10 @@ exports.loginStudent = async (req, res) => {
     res.json({
       message: 'Login successful',
       token,
-      student: {
+      user: {
         id: student.id,
         srn: student.srn,
-        name: student.name,
-        email: student.email
+        name: student.name
       }
     });
   } catch (error) {
@@ -77,7 +90,8 @@ exports.loginStudent = async (req, res) => {
 
 exports.loginVendor = async (req, res) => {
   try {
-    const { vendor_id, password } = req.body;
+    const { vendorId, vendor_id: raw_id, password } = req.body;
+    const vendor_id = vendorId || raw_id;
 
     if (!vendor_id || !password) {
       return res.status(400).json({ error: 'Vendor ID and password are required' });
@@ -112,7 +126,8 @@ exports.loginVendor = async (req, res) => {
       vendor: {
         id: vendor.id,
         vendor_id: vendor.vendor_id,
-        store_name: vendor.store_name
+        name: vendor.name,
+        store_name: vendor.name // Frontend alias
       }
     });
   } catch (error) {
